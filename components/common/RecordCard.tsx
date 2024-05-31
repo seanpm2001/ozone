@@ -1,17 +1,21 @@
-import { useQuery } from '@tanstack/react-query'
-import { AppBskyFeedDefs, ToolsOzoneModerationDefs } from '@atproto/api'
-import { buildBlueSkyAppUrl, parseAtUri } from '@/lib/util'
-import client from '@/lib/client'
-import { PostAsCard } from './posts/PostsFeed'
-import Link from 'next/link'
-import { LoadingDense, displayError, LoadingFailedDense } from './Loader'
-import { CollectionId } from '@/reports/helpers/subject'
-import { ListRecordCard } from 'components/list/RecordCard'
-import { FeedGeneratorRecordCard } from './feeds/RecordCard'
-import { ProfileAvatar } from '@/repositories/ProfileAvatar'
+import {
+  AppBskyActorDefs,
+  AppBskyFeedDefs,
+  ComAtprotoLabelDefs,
+  ToolsOzoneModerationDefs,
+} from '@atproto/api'
 import { ShieldCheckIcon } from '@heroicons/react/24/solid'
-import { ProfileViewDetailed } from '@atproto/api/dist/client/types/app/bsky/actor/defs'
-import { isSelfLabels } from '@atproto/api/dist/client/types/com/atproto/label/defs'
+import { useQuery } from '@tanstack/react-query'
+import Link from 'next/link'
+
+import { buildBlueSkyAppUrl, parseAtUri } from '@/lib/util'
+import { CollectionId } from '@/reports/helpers/subject'
+import { ProfileAvatar } from '@/repositories/ProfileAvatar'
+import { ListRecordCard } from 'components/list/RecordCard'
+import { LoadingDense, LoadingFailedDense, displayError } from './Loader'
+import { FeedGeneratorRecordCard } from './feeds/RecordCard'
+import { PostAsCard } from './posts/PostsFeed'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
 
 export function RecordCard(props: { uri: string; showLabels?: boolean }) {
   const { uri, showLabels = false } = props
@@ -46,20 +50,18 @@ export function RecordCard(props: { uri: string; showLabels?: boolean }) {
   )
 }
 
-function PostCard(props: { uri: string; showLabels?: boolean }) {
-  const { uri, showLabels } = props
+function PostCard({ uri, showLabels }: { uri: string; showLabels?: boolean }) {
+  const client = useLabelerAgent()
+
   const { error, data } = useQuery({
     retry: false,
     queryKey: ['postCard', { uri }],
     queryFn: async () => {
       // @TODO when unifying admin auth, ensure admin can see taken-down posts
-      const { data: post } = await client.api.app.bsky.feed.getPostThread(
-        {
-          uri,
-          depth: 0,
-        },
-        { headers: client.proxyHeaders() },
-      )
+      const { data: post } = await client.api.app.bsky.feed.getPostThread({
+        uri,
+        depth: 0,
+      })
       return post
     },
   })
@@ -89,7 +91,7 @@ function PostCard(props: { uri: string; showLabels?: boolean }) {
                 cid: record.cid,
                 author: record.repo,
                 record: record.value,
-                labels: isSelfLabels(record.value['labels'])
+                labels: ComAtprotoLabelDefs.isSelfLabels(record.value['labels'])
                   ? record.value['labels'].values.map(({ val }) => ({
                       val,
                       uri: record.uri,
@@ -119,21 +121,24 @@ function PostCard(props: { uri: string; showLabels?: boolean }) {
   )
 }
 
-function BaseRecordCard(props: {
+function BaseRecordCard({
+  uri,
+  renderRecord,
+}: {
   uri: string
   renderRecord: (
     record: ToolsOzoneModerationDefs.RecordViewDetail,
   ) => JSX.Element
 }) {
-  const { uri, renderRecord } = props
+  const client = useLabelerAgent()
+
   const { data: record, error } = useQuery({
     retry: false,
     queryKey: ['recordCard', { uri }],
     queryFn: async () => {
-      const { data } = await client.api.tools.ozone.moderation.getRecord(
-        { uri },
-        { headers: client.proxyHeaders() },
-      )
+      const { data } = await client.api.tools.ozone.moderation.getRecord({
+        uri,
+      })
       return data
     },
   })
@@ -171,26 +176,24 @@ function GenericRecordCard({
 }
 
 const useRepoAndProfile = ({ did }: { did: string }) => {
+  const client = useLabelerAgent()
+
   return useQuery({
     retry: false,
     queryKey: ['repoCard', { did }],
     queryFn: async () => {
       // @TODO when unifying admin auth, ensure admin can see taken-down profiles
       const getRepo = async () => {
-        const { data: repo } = await client.api.tools.ozone.moderation.getRepo(
-          { did },
-          { headers: client.proxyHeaders() },
-        )
+        const { data: repo } = await client.api.tools.ozone.moderation.getRepo({
+          did,
+        })
         return repo
       }
       const getProfile = async () => {
         try {
-          const { data: profile } = await client.api.app.bsky.actor.getProfile(
-            {
-              actor: did,
-            },
-            { headers: client.proxyHeaders() },
-          )
+          const { data: profile } = await client.api.app.bsky.actor.getProfile({
+            actor: did,
+          })
           return profile
         } catch (err) {
           if (err?.['status'] === 400) {
@@ -246,7 +249,7 @@ export function InlineRepo(props: { did: string }) {
 const AssociatedProfileIcon = ({
   profile,
 }: {
-  profile?: ProfileViewDetailed
+  profile?: AppBskyActorDefs.ProfileViewDetailed
 }) => {
   let title = ''
 

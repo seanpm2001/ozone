@@ -1,20 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
+
 import { Loading, LoadingFailed } from '@/common/Loader'
-import client from '@/lib/client'
 import { buildBlueSkyAppUrl } from '@/lib/util'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
 
 export const FeedGeneratorRecordCard = ({ uri }: { uri: string }) => {
+  const client = useLabelerAgent()
   const { error, data, isFetching } = useQuery({
     retry: false,
     queryKey: ['feed-generator', uri],
     queryFn: async () => {
-      const { data } = await client.api.app.bsky.feed.getFeedGenerator(
-        {
-          feed: uri,
-        },
-        { headers: client.proxyHeaders() },
-      )
+      const { data } = await client.api.app.bsky.feed.getFeedGenerator({
+        feed: uri,
+      })
       return data
     },
   })

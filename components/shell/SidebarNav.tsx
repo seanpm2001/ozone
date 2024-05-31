@@ -1,17 +1,21 @@
 'use client'
 
+import { useKBar } from 'kbar'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useKBar } from 'kbar'
+
 import { classNames } from '@/lib/util'
-import { useSession } from '@/lib/useSession'
+import { useAuthDid } from './AuthContext'
+import { useConfigurationContext } from './ConfigurationContext'
 import { ICONS, NAV_ITEMS, isCurrent } from './common'
 
 export function SidebarNav({ theme, toggleTheme }) {
   const kbar = useKBar()
   const pathname = usePathname() || '/'
-  const session = useSession()
-  const isServiceAccount = !!session && session.did === session.config.did
+  const did = useAuthDid()
+  const { config } = useConfigurationContext()
+
+  const isServiceAccount = !!config && config.did === did
   return (
     <div className="mt-6 w-full flex-1 space-y-1 px-2">
       {NAV_ITEMS.map((item) => {

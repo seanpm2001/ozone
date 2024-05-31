@@ -1,31 +1,35 @@
 'use client'
-import { useContext, useCallback } from 'react'
+import {
+  AtUri,
+  BskyAgent,
+  ToolsOzoneModerationDefs,
+  ToolsOzoneModerationEmitEvent,
+  ToolsOzoneModerationQueryStatuses,
+} from '@atproto/api'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import {
   ReadonlyURLSearchParams,
   usePathname,
   useRouter,
   useSearchParams,
 } from 'next/navigation'
-import { useInfiniteQuery } from '@tanstack/react-query'
-import {
-  AtUri,
-  ToolsOzoneModerationDefs,
-  ToolsOzoneModerationEmitEvent,
-  ToolsOzoneModerationQueryStatuses,
-} from '@atproto/api'
-import { SectionHeader } from '../../components/SectionHeader'
-import { ModActionIcon } from '@/common/ModActionIcon'
-import client from '@/lib/client'
-import { validSubjectString } from '@/lib/types'
-import { emitEvent } from '@/mod-event/helpers/emitEvent'
-import { ModActionPanelQuick } from '../actions/ModActionPanel/QuickAction'
-import { AuthContext } from '@/shell/AuthContext'
-import { ButtonGroup } from '@/common/buttons'
-import { useFluentReportSearch } from '@/reports/useFluentReportSearch'
-import { SubjectTable } from 'components/subject/table'
+import { useCallback } from 'react'
 import { useTitle } from 'react-use'
+
+import { ModActionIcon } from '@/common/ModActionIcon'
+import { validSubjectString } from '@/lib/types'
+import { SectionHeader } from '../../components/SectionHeader'
+
 import { LanguagePicker } from '@/common/LanguagePicker'
-import { QueueSelector, QUEUE_NAMES } from '@/reports/QueueSelector'
+import { ButtonGroup } from '@/common/buttons'
+import { unique } from '@/lib/util'
+import { useEmitEvent } from '@/mod-event/helpers/emitEvent'
+import { QUEUE_NAMES, QueueSelector } from '@/reports/QueueSelector'
+import { useFluentReportSearch } from '@/reports/useFluentReportSearch'
+import { useAuthContext } from '@/shell/AuthContext'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
+import { SubjectTable } from 'components/subject/table'
+import { ModActionPanelQuick } from '../actions/ModActionPanel/QuickAction'
 
 const TABS = [
   {
@@ -160,6 +164,8 @@ const getSortParams = (params: ReadonlyURLSearchParams) => {
 }
 
 export const ReportsPageContent = () => {
+  const labelerAgent = useLabelerAgent(false)
+  const emitEvent = useEmitEvent()
   const params = useSearchParams()
   const quickOpenParam = params.get('quickOpen') ?? ''
   const takendown = !!params.get('takendown')
@@ -185,7 +191,7 @@ export const ReportsPageContent = () => {
     router.push((pathname ?? '') + '?' + searchParams.toString())
   }
 
-  const { isLoggedIn } = useContext(AuthContext)
+  const { isLoggedIn } = useAuthContext()
   const { data, fetchNextPage, hasNextPage, refetch, isInitialLoading } =
     useInfiniteQuery({
       enabled: isLoggedIn,
@@ -208,7 +214,7 @@ export const ReportsPageContent = () => {
         },
       ],
       queryFn: async ({ pageParam }) => {
-        const queryParams: Parameters<typeof getModerationQueue>[0] = {
+        const queryParams: ToolsOzoneModerationQueryStatuses.QueryParams = {
           cursor: pageParam,
         }
 
@@ -252,7 +258,8 @@ export const ReportsPageContent = () => {
           }
         })
 
-        return await getModerationQueue(queryParams, queueName)
+        if (!labelerAgent) throw new Error('Labeler agent not available')
+        return await getModerationQueue(labelerAgent, queryParams, queueName)
       },
       getNextPageParam: (lastPage) => lastPage.cursor,
     })
@@ -327,17 +334,15 @@ function getTabFromParams({ reviewState }: { reviewState?: string | null }) {
 }
 
 async function getModerationQueue(
+  client: BskyAgent,
   opts: ToolsOzoneModerationQueryStatuses.QueryParams = {},
   queueName: string | null,
 ) {
-  const { data } = await client.api.tools.ozone.moderation.queryStatuses(
-    {
-      limit: 50,
-      includeMuted: true,
-      ...opts,
-    },
-    { headers: client.proxyHeaders() },
-  )
+  const { data } = await client.api.tools.ozone.moderation.queryStatuses({
+    limit: 50,
+    includeMuted: true,
+    ...opts,
+  })
 
   const queueDivider = QUEUE_NAMES.length
   const queueIndex = QUEUE_NAMES.indexOf(queueName ?? '')
@@ -354,11 +359,4 @@ async function getModerationQueue(
     : data.subjectStatuses
 
   return { cursor: data.cursor, subjectStatuses: statusesInQueue }
-}
-
-function unique<T>(arr: T[]) {
-  const set = new Set(arr)
-  const result: T[] = []
-  set.forEach((val) => result.push(val))
-  return result
 }

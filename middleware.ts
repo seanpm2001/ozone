@@ -9,9 +9,17 @@ export const config = {
 
 export function middleware(request: NextRequest) {
   const url = request.nextUrl.clone()
-  if (url.pathname === '/') {
-    url.pathname = '/reports'
-    url.searchParams.set('resolved', 'false')
+
+  if (url.hostname === 'localhost') {
+    url.hostname = '127.0.0.1'
+  }
+
+  if (url.pathname !== '/') {
+    const { pathname, search } = url
+    url.pathname = '/'
+    url.search = ''
+    url.searchParams.set('redirect', pathname + search)
+
     return NextResponse.redirect(url)
   }
 }

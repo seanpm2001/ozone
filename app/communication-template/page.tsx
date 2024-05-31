@@ -13,7 +13,7 @@ import { CommunicationTemplateDeleteConfirmationModal } from 'components/communi
 import { ActionButton, LinkButton } from '@/common/buttons'
 
 export default function CommunicationTemplatePage() {
-  const { data, error, isLoading } = useCommunicationTemplateList({})
+  const { data, error, isLoading } = useCommunicationTemplateList()
   const [deletingTemplateId, setDeletingTemplateId] = useState<
     string | undefined
   >()

@@ -1,10 +1,10 @@
 'use client'
-import { useContext, useEffect, useState } from 'react'
-import { redirect, useRouter, useSearchParams } from 'next/navigation'
+
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 import { getDidFromHandle } from '@/lib/identity'
-import clientManager from '@/lib/client'
-import { AuthContext } from '@/shell/AuthContext'
+import { useAuthContext } from '@/shell/AuthContext'
 
 export const useHandleToDidRedirect = (
   handle: string,
@@ -13,7 +13,7 @@ export const useHandleToDidRedirect = (
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isFetching, setIsFetching] = useState<boolean>(true)
-  const { isLoggedIn } = useContext(AuthContext)
+  const { isLoggedIn } = useAuthContext()
 
   useEffect(() => {
     setIsFetching(true)

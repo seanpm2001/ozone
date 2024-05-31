@@ -1,9 +1,9 @@
 'use client'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Posts } from '../posts/Posts'
-import client from '@/lib/client'
 import { useState } from 'react'
 import { useRepoAndProfile } from '@/repositories/useRepoAndProfile'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
 
 export function AuthorFeed({
   id,
@@ -14,30 +14,25 @@ export function AuthorFeed({
 }) {
   const [query, setQuery] = useState('')
   const { data: repoData } = useRepoAndProfile({ id })
+  const client = useLabelerAgent()
+
   const { data, fetchNextPage, hasNextPage, isFetching } = useInfiniteQuery({
     queryKey: ['authorFeed', { id, query }],
     queryFn: async ({ pageParam }) => {
-      const options = { headers: client.proxyHeaders() }
       const searchPosts = query.length && repoData?.repo.handle
       if (searchPosts) {
-        const { data } = await client.api.app.bsky.feed.searchPosts(
-          {
-            q: `from:${repoData?.repo.handle} ${query}`,
-            limit: 30,
-            cursor: pageParam,
-          },
-          options,
-        )
+        const { data } = await client.api.app.bsky.feed.searchPosts({
+          q: `from:${repoData?.repo.handle} ${query}`,
+          limit: 30,
+          cursor: pageParam,
+        })
         return { ...data, feed: data.posts.map((post) => ({ post })) }
       } else {
-        const { data } = await client.api.app.bsky.feed.getAuthorFeed(
-          {
-            actor: id,
-            limit: 30,
-            cursor: pageParam,
-          },
-          options,
-        )
+        const { data } = await client.api.app.bsky.feed.getAuthorFeed({
+          actor: id,
+          limit: 30,
+          cursor: pageParam,
+        })
         return data
       }
     },

@@ -1,17 +1,18 @@
+import { AppBskyLabelerService } from '@atproto/api'
+import { useMutation } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useTitle } from 'react-use'
-import Link from 'next/link'
-import dynamic from 'next/dynamic'
-import { useMutation } from '@tanstack/react-query'
-import { AppBskyLabelerService } from '@atproto/api'
-import client, { ClientSession } from '@/lib/client'
-import { useSession } from '@/lib/useSession'
-import { ButtonGroup, ButtonPrimary, ButtonSecondary } from '@/common/buttons'
+
 import { Card } from '@/common/Card'
 import { ErrorInfo } from '@/common/ErrorInfo'
-import { useSyncedState } from '@/lib/useSyncedState'
-import { isDarkModeEnabled } from '@/common/useColorScheme'
+import { ButtonGroup, ButtonPrimary, ButtonSecondary } from '@/common/buttons'
 import { Checkbox, Textarea } from '@/common/forms'
+import { isDarkModeEnabled } from '@/common/useColorScheme'
+import { useSyncedState } from '@/lib/useSyncedState'
+import { useAuthDid, usePdsAgent } from '@/shell/AuthContext'
+import { useConfigurationContext } from '@/shell/ConfigurationContext'
 
 const BrowserReactJsonView = dynamic(() => import('react-json-view'), {
   ssr: false,
@@ -19,15 +20,20 @@ const BrowserReactJsonView = dynamic(() => import('react-json-view'), {
 
 export default function ConfigurePageContent() {
   useTitle('Configure')
-  const session = useSession()
+
+  const did = useAuthDid()
+  const { config, reconfigure } = useConfigurationContext()
+
   useEffect(() => {
-    client.reconfigure() // Ensure config is up to date
-  }, [])
-  if (!session) return null
-  const isServiceAccount = session.did === session.config.did
+    reconfigure() // Ensure config is up to date
+  }, [reconfigure])
+
+  if (!config) return null
+
+  const isServiceAccount = did === config.did
   return (
     <div className="w-5/6 sm:w-3/4 md:w-2/3 lg:w-1/2 mx-auto my-4 dark:text-gray-100">
-      {isServiceAccount && <ConfigureDetails session={session} />}
+      {isServiceAccount && <ConfigureDetails />}
       {!isServiceAccount && (
         <div>
           <h3 className="font-medium text-lg text-gray-700 dark:text-gray-100">
@@ -35,8 +41,8 @@ export default function ConfigurePageContent() {
           </h3>
           <Card className="mt-4 p-4">
             Please login as your service account{' '}
-            {session?.config.handle && <b>{session?.config.handle}</b>} in order
-            to configure Ozone.
+            {config.handle && <b>{config.handle}</b>} in order to configure
+            Ozone.
           </Card>
         </div>
       )}
@@ -44,8 +50,11 @@ export default function ConfigurePageContent() {
   )
 }
 
-function ConfigureDetails({ session }: { session: ClientSession }) {
-  const record = session.config.labeler ?? null
+function ConfigureDetails() {
+  const { config } = useConfigurationContext()
+  if (!config) return null
+
+  const record = config.labeler ?? null
   return (
     <div>
       <h3 className="font-medium text-lg text-gray-700 dark:text-gray-100">
@@ -77,8 +86,8 @@ function ConfigureDetails({ session }: { session: ClientSession }) {
             </li>
           </ul>
         </p>
-        {!record && <RecordInitStep repo={session.config.did} />}
-        {record && <RecordEditStep repo={session.config.did} record={record} />}
+        {!record && <RecordInitStep repo={config.did} />}
+        {record && <RecordEditStep repo={config.did} record={record} />}
       </Card>
     </div>
   )
@@ -86,9 +95,11 @@ function ConfigureDetails({ session }: { session: ClientSession }) {
 
 function RecordInitStep({ repo }: { repo: string }) {
   const [checked, setChecked] = useState(false)
+  const pdsAgent = usePdsAgent()
+  const { reconfigure } = useConfigurationContext()
   const createInitialRecord = useMutation({
     mutationFn: async () => {
-      await client.api.com.atproto.repo.putRecord({
+      await pdsAgent.api.com.atproto.repo.putRecord({
         repo,
         collection: 'app.bsky.labeler.service',
         rkey: 'self',
@@ -97,7 +108,7 @@ function RecordInitStep({ repo }: { repo: string }) {
           policies: { labelValues: [] },
         },
       })
-      await client.reconfigure()
+      await reconfigure()
     },
   })
   return (
@@ -146,6 +157,9 @@ function RecordEditStep({
   record: AppBskyLabelerService.Record
   repo: string
 }) {
+  const pdsAgent = usePdsAgent()
+  const { reconfigure } = useConfigurationContext()
+
   const [editorMode, setEditorMode] = useState<'json' | 'plain'>('json')
   const darkMode = isDarkModeEnabled()
   const [recordVal, setRecordVal] = useSyncedState(record)
@@ -160,13 +174,13 @@ function RecordEditStep({
   }, [recordVal])
   const updateRecord = useMutation({
     mutationFn: async () => {
-      await client.api.com.atproto.repo.putRecord({
+      await pdsAgent.api.com.atproto.repo.putRecord({
         repo,
         collection: 'app.bsky.labeler.service',
         rkey: 'self',
         record: recordVal,
       })
-      await client.reconfigure()
+      await reconfigure()
     },
   })
   const addLabelValue = () => {

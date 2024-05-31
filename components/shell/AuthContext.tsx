@@ -1,50 +1,105 @@
-import { AuthState } from '@/lib/types'
-import { createContext, useState } from 'react'
+'use client'
 
-// This may seem a bit over-engineered but this is only the groundwork so while the current data model is simplistic
-// and could probably be handled in a simpler setup, the below setup helps us evolve the context to hold much complex
-// model and expose only what may be needed by UI if/when we have complex authorization based on user role etc.
+import { AppBskyActorDefs, BskyAgent } from '@atproto/api'
+import { useQuery } from '@tanstack/react-query'
+import { createContext, useContext, useMemo } from 'react'
 
-export { AuthState } from '@/lib/types'
+import { PLC_DIRECTORY_URL, SOCIAL_APP_URL } from '@/lib/constants'
+import { useOAuth } from '../../lib/useOAuth'
+
+const OAUTH_CLIENT_OPTIONS = {
+  plcDirectoryUrl: PLC_DIRECTORY_URL,
+  handleResolver: SOCIAL_APP_URL,
+}
+
+export type Profile = AppBskyActorDefs.ProfileViewDetailed
 
 type AuthContextData = {
-  authState: AuthState
   isLoggedIn: boolean
   isValidatingAuth: boolean
+
+  did?: string
+  pdsAgent?: BskyAgent
+
+  signIn: (input: string) => Promise<void>
+  signOut: () => Promise<void>
 }
 
-const getAuthContextDataFromState = (authState: AuthState): AuthContextData => {
-  return {
-    authState,
-    isLoggedIn: authState === AuthState.LoggedIn,
-    isValidatingAuth: authState === AuthState.Validating,
-  }
-}
+const AuthContext = createContext<AuthContextData | null>(null)
 
-const initialContextData = {
-  authState: AuthState.Validating,
-  isValidatingAuth: true,
-  isLoggedIn: false,
-}
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const { client, agent, loading, signIn, signOut } =
+    useOAuth(OAUTH_CLIENT_OPTIONS)
 
-export const AuthContext = createContext<AuthContextData>(initialContextData)
-export const AuthChangeContext = createContext<(authState: AuthState) => void>(
-  (_: AuthState) => null,
-)
+  const pdsAgent = useMemo(
+    () => (agent ? new BskyAgent(agent) : undefined),
+    [agent],
+  )
 
-export const AuthProvider = ({ children }) => {
-  const [authContextData, setAuthContextData] =
-    useState<AuthContextData>(initialContextData) // immediately corrected in useEffect below
+  // Memoize the context value to avoid re-renders in consumers, when this
+  // component re-renders with the same context value.
+
+  const did = agent?.sub
+  const isValidatingAuth = client != null && loading
+  const isLoggedIn = agent != null
+
+  const authContextData: AuthContextData = useMemo(
+    () => ({
+      isValidatingAuth,
+      isLoggedIn,
+      did,
+      pdsAgent,
+      signIn,
+      signOut,
+    }),
+    [isValidatingAuth, isLoggedIn, did, pdsAgent, signIn, signOut],
+  )
 
   return (
     <AuthContext.Provider value={authContextData}>
-      <AuthChangeContext.Provider
-        value={(authState) =>
-          setAuthContextData(getAuthContextDataFromState(authState))
-        }
-      >
-        {children}
-      </AuthChangeContext.Provider>
+      {children}
     </AuthContext.Provider>
   )
+}
+
+export const useAuthContext = (): AuthContextData => {
+  const context = useContext(AuthContext)
+  if (!context) throw new Error(`useAuthContext() requires an AuthProvider`)
+  return context
+}
+
+export function usePdsAgent(required?: true): BskyAgent
+export function usePdsAgent(required: false): BskyAgent | undefined
+export function usePdsAgent(required = true) {
+  const { pdsAgent } = useAuthContext()
+  if (required && !pdsAgent) throw new Error('User not authenticated')
+  return pdsAgent
+}
+
+export const useAuthDid = () => {
+  return useAuthContext().did
+}
+
+export const useAuthProfileQuery = () => {
+  const pdsAgent = usePdsAgent(false)
+  return useQuery({
+    queryKey: ['profile', pdsAgent?.did],
+    queryFn: async () =>
+      pdsAgent?.getProfile({ actor: pdsAgent.getDid() }) ?? null,
+  })
+}
+
+export const useAuthProfile = () => {
+  const profileQuery = useAuthProfileQuery()
+  return profileQuery.data?.data
+}
+
+export const useAuthHandle = () => {
+  return useAuthProfile()?.handle
+}
+
+export const useAuthIdentifier = () => {
+  const handle = useAuthHandle()
+  const did = useAuthDid()
+  return handle ?? did
 }

@@ -1,24 +1,24 @@
-import { SectionHeader } from '../../components/SectionHeader'
-import { RepositoriesTable } from '@/repositories/RepositoriesTable'
-import { useSearchParams } from 'next/navigation'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import client from '@/lib/client'
+import { useSearchParams } from 'next/navigation'
 import { useTitle } from 'react-use'
+
+import { RepositoriesTable } from '@/repositories/RepositoriesTable'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
+import { SectionHeader } from '../../components/SectionHeader'
 
 export default function RepositoriesListPage() {
   const params = useSearchParams()
+  const client = useLabelerAgent()
+
   const q = params.get('term') ?? ''
   const { data, fetchNextPage, hasNextPage } = useInfiniteQuery({
     queryKey: ['repositories', { q }],
     queryFn: async ({ pageParam }) => {
-      const { data } = await client.api.tools.ozone.moderation.searchRepos(
-        {
-          q,
-          limit: 25,
-          cursor: pageParam,
-        },
-        { headers: client.proxyHeaders() },
-      )
+      const { data } = await client.api.tools.ozone.moderation.searchRepos({
+        q,
+        limit: 25,
+        cursor: pageParam,
+      })
       return data
     },
     getNextPageParam: (lastPage) => lastPage.cursor,

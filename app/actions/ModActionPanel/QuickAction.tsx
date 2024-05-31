@@ -1,18 +1,25 @@
 // TODO: This is badly named so that we can rebuild this component without breaking the old one
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ComAtprotoModerationDefs,
   ToolsOzoneModerationDefs,
   ToolsOzoneModerationEmitEvent,
 } from '@atproto/api'
 import { FormEvent, useEffect, useRef, useState } from 'react'
+import { createBreakpoint, useKeyPressEvent } from 'react-use'
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckCircleIcon,
+  QuestionMarkCircleIcon,
+} from '@heroicons/react/24/outline'
+
 import { ActionPanel } from '@/common/ActionPanel'
 import { ButtonPrimary, ButtonSecondary } from '@/common/buttons'
 import { Checkbox, FormLabel, Input, Textarea } from '@/common/forms'
 import { PropsOf } from '@/lib/types'
-import client from '@/lib/client'
 import { BlobList } from './BlobList'
-import { queryClient } from 'components/QueryClient'
+
 import {
   LabelChip,
   LabelList,
@@ -25,13 +32,6 @@ import {
 } from '@/common/labels'
 import { FullScreenActionPanel } from '@/common/FullScreenActionPanel'
 import { PreviewCard } from '@/common/PreviewCard'
-import { createBreakpoint, useKeyPressEvent } from 'react-use'
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckCircleIcon,
-  QuestionMarkCircleIcon,
-} from '@heroicons/react/24/outline'
 import { LabelSelector } from '@/common/labels/Selector'
 import { takesKeyboardEvt } from '@/lib/util'
 import { Loading } from '@/common/Loader'
@@ -50,6 +50,7 @@ import { Card } from '@/common/Card'
 import { DM_DISABLE_TAG } from '@/lib/constants'
 import { MessageActorMeta } from '@/dms/MessageActorMeta'
 import { ModEventDetailsPopover } from '@/mod-event/DetailsPopover'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
 
 const FORM_ID = 'mod-action-panel'
 const useBreakpoint = createBreakpoint({ xs: 340, sm: 640 })
@@ -146,6 +147,9 @@ function Form(
     replaceFormWithEvents: boolean
   } & Pick<Props, 'setSubject' | 'subject' | 'subjectOptions' | 'onSubmit'>,
 ) {
+  const queryClient = useQueryClient()
+  const labelerAgent = useLabelerAgent()
+
   const {
     subject,
     setSubject,
@@ -159,16 +163,13 @@ function Form(
     isSubmitting: boolean
     error: string
   }>({ isSubmitting: false, error: '' })
-  const { data: subjectStatus, refetch: refetchSubjectStatus } = useQuery({
-    // subject of the report
-    queryKey: ['modSubjectStatus', { subject }],
-    queryFn: () => getSubjectStatus(subject),
-  })
-  const { data: { record, repo } = {}, refetch: refetchSubject } = useQuery({
-    // subject of the report
-    queryKey: ['modActionSubject', { subject }],
-    queryFn: () => getSubject(subject),
-  })
+
+  const { data: subjectStatus, refetch: refetchSubjectStatus } =
+    useSubjectStatusQuery(subject)
+
+  const { data: { record, repo } = {}, refetch: refetchSubject } =
+    useSubjectQuery(subject)
+
   const isSubjectDid = subject.startsWith('did:')
   const isReviewClosed =
     subjectStatus?.reviewState === ToolsOzoneModerationDefs.REVIEWCLOSED
@@ -293,7 +294,7 @@ function Form(
         coreEvent.$type = MOD_EVENTS.TAG
       }
       const { subject: subjectInfo, record: recordInfo } =
-        await createSubjectFromId(subject)
+        await createSubjectFromId(labelerAgent, subject)
 
       const subjectBlobCids = formData
         .getAll('subjectBlobCids')
@@ -349,7 +350,7 @@ function Form(
           labelSubmissions.push(
             onSubmit({
               subject: { ...subjectInfo, cid: labelCid },
-              createdBy: client.session.did,
+              createdBy: labelerAgent.getDid(),
               subjectBlobCids: formData
                 .getAll('subjectBlobCids')
                 .map((cid) => String(cid)),
@@ -371,7 +372,7 @@ function Form(
           labelSubmissions.push(
             onSubmit({
               subject: subjectInfo,
-              createdBy: client.session.did,
+              createdBy: labelerAgent.getDid(),
               subjectBlobCids: formData
                 .getAll('subjectBlobCids')
                 .map((cid) => String(cid)),
@@ -384,7 +385,7 @@ function Form(
       } else {
         await onSubmit({
           subject: subjectInfo,
-          createdBy: client.session.did,
+          createdBy: labelerAgent.getDid(),
           subjectBlobCids,
           event: coreEvent,
         })
@@ -393,7 +394,7 @@ function Form(
       if (formData.get('additionalAcknowledgeEvent')) {
         await onSubmit({
           subject: subjectInfo,
-          createdBy: client.session.did,
+          createdBy: labelerAgent.getDid(),
           subjectBlobCids: formData
             .getAll('subjectBlobCids')
             .map((cid) => String(cid)),
@@ -785,40 +786,46 @@ function Form(
   )
 }
 
-async function getSubject(subject: string) {
-  if (subject.startsWith('did:')) {
-    const { data: repo } = await client.api.tools.ozone.moderation.getRepo(
-      {
-        did: subject,
-      },
-      { headers: client.proxyHeaders() },
-    )
-    return { repo }
-  } else if (subject.startsWith('at://')) {
-    const { data: record } = await client.api.tools.ozone.moderation.getRecord(
-      {
-        uri: subject,
-      },
-      { headers: client.proxyHeaders() },
-    )
-    return { record }
-  } else {
-    return {}
-  }
+function useSubjectQuery(subject: string) {
+  const client = useLabelerAgent()
+  return useQuery({
+    // subject of the report
+    queryKey: ['modActionSubject', { subject }],
+    queryFn: async () => {
+      if (subject.startsWith('did:')) {
+        const { data: repo } = await client.api.tools.ozone.moderation.getRepo({
+          did: subject,
+        })
+        return { repo }
+      } else if (subject.startsWith('at://')) {
+        const { data: record } =
+          await client.api.tools.ozone.moderation.getRecord({
+            uri: subject,
+          })
+        return { record }
+      } else {
+        return {}
+      }
+    },
+  })
 }
 
-async function getSubjectStatus(subject: string) {
-  const {
-    data: { subjectStatuses },
-  } = await client.api.tools.ozone.moderation.queryStatuses(
-    {
-      subject,
-      includeMuted: true,
-      limit: 1,
+function useSubjectStatusQuery(subject: string) {
+  const client = useLabelerAgent()
+  return useQuery({
+    // subject of the report
+    queryKey: ['modSubjectStatus', { subject }],
+    queryFn: async () => {
+      const {
+        data: { subjectStatuses },
+      } = await client.api.tools.ozone.moderation.queryStatuses({
+        subject,
+        includeMuted: true,
+        limit: 1,
+      })
+      return subjectStatuses.at(0) || null
     },
-    { headers: client.proxyHeaders() },
-  )
-  return subjectStatuses.at(0) || null
+  })
 }
 
 function isMultiPress(ev: KeyboardEvent) {

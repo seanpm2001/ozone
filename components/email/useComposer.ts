@@ -76,7 +76,7 @@ const confirmationReducer = (state: ComposerState, action: ComposerAction) => {
 
 export const useEmailComposer = () => {
   const [state, dispatch] = useReducer(confirmationReducer, initialState)
-  const { data: communicationTemplates } = useCommunicationTemplateList({})
+  const { data: communicationTemplates } = useCommunicationTemplateList()
 
   return {
     ...state,

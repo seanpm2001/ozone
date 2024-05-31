@@ -1,21 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
+
 import { Loading, LoadingFailed } from '@/common/Loader'
-import client from '@/lib/client'
 import { buildBlueSkyAppUrl } from '@/lib/util'
+import { useLabelerAgent } from '@/shell/ConfigurationContext'
 
 export const ListRecordCard = ({ uri }: { uri: string }) => {
+  const client = useLabelerAgent()
+
   const { error, data, isFetching } = useQuery({
     retry: false,
     queryKey: ['list', uri],
     queryFn: async () => {
-      const { data } = await client.api.app.bsky.graph.getList(
-        {
-          list: uri,
-          limit: 1,
-        },
-        { headers: client.proxyHeaders() },
-      )
+      const { data } = await client.api.app.bsky.graph.getList({
+        list: uri,
+        limit: 1,
+      })
       return data
     },
   })

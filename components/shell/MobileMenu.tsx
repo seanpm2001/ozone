@@ -1,15 +1,17 @@
 'use client'
 
-import { Fragment, createContext, useContext, useState } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { Dialog, Transition } from '@headlessui/react'
 import { Bars3BottomLeftIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { classNames } from '@/lib/util'
-import { useSession } from '@/lib/useSession'
-import { ICONS, NAV_ITEMS, isCurrent } from './common'
-import Image from 'next/image'
 import { useKBar } from 'kbar'
+import Image from 'next/image'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Fragment, createContext, useContext, useState } from 'react'
+
+import { classNames } from '@/lib/util'
+import { useAuthDid } from './AuthContext'
+import { useConfigurationContext } from './ConfigurationContext'
+import { ICONS, NAV_ITEMS, isCurrent } from './common'
 
 interface MobileMenuOpen {
   open: boolean
@@ -48,8 +50,10 @@ export function MobileMenu({ toggleTheme }: { toggleTheme: () => void }) {
   const pathname = usePathname() || '/'
   const mobileMenuOpen = useContext(MobileMenuOpenCtx)
   const kbar = useKBar()
-  const session = useSession()
-  const isServiceAccount = !!session && session.did === session.config.did
+  const did = useAuthDid()
+  const { config } = useConfigurationContext()
+
+  const isServiceAccount = !!config && config.did === did
   return (
     <>
       {/* Mobile menu */}

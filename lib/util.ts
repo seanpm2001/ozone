@@ -145,6 +145,6 @@ export const buildAtUriFromFragments = (
 export const isValidDid = (did?: string | null) => did?.startsWith('did:')
 export const isValidHandle = (handle?: string | null) => handle?.includes('.')
 
-export function unique<T>(arr: T[]) {
-  return [...new Set(arr)]
+export function unique<T>(arr: Iterable<T>) {
+  return Array.from(new Set(arr))
 }
